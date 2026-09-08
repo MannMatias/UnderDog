@@ -426,12 +426,18 @@ def build_player_features(lineups: pd.DataFrame) -> pd.DataFrame:
     )
     features = features.join(gk)
 
-    # cada linea segun la formacion real de ese partido
+    # cada linea segun la formacion real de ese partido.
+    # `reindex` deja exactamente las tres lineas reales: si algun titular
+    # quedo sin clasificar, `line` vale el string "nan" y el `unstack`
+    # crearia una columna espuria (`home_nan`/`away_nan`) casi toda nula.
+    # Tambien garantiza las tres columnas aunque una linea no aparezca en
+    # ninguna formacion, igual que el guard de `shape` mas abajo.
     by_line = (
         lineups[lineups["line"] != "gk"]
         .groupby(["match_api_id", "side", "line"])["overall_rating"]
         .mean()
         .unstack("line")
+        .reindex(columns=["def", "mid", "att"])
         .rename(columns={"def": "def_overall", "mid": "mid_overall", "att": "att_overall"})
     )
     features = features.join(by_line)

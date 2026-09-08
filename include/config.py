@@ -41,6 +41,17 @@ ODDS_BOOKMAKERS = [
     ("BSH", "BSD", "BSA"),
 ]
 
+# Tope de probabilidad implicita de empate para aceptar la tripleta 1X2 como
+# un mercado pre-partido coherente. Ninguna casa real paga un empate por
+# encima del 40%, y el dato lo confirma: hasta 1/cuota = 0.40 la cuota de
+# empate esta bien calibrada (la tasa real de empate sube monotonicamente de
+# 13% a 30% y el margen de la casa se queda en ~1.04), pero por encima de
+# 0.40 la calibracion se rompe (44% y 56% de empates reales) y el margen
+# salta a ~1.09. Son 32 de 19.694 partidos, todos de 2008/09 a 2012/13 y casi
+# todos de Serie A: cuotas corruptas en la fuente. Una fila asi no puede
+# definir favorito, que es la base de la pregunta, asi que se excluye.
+MAX_PROB_EMPATE_IMPLICITA = 0.40
+
 # Umbral para marcar partidos "parejos", donde la etiqueta de favorito es
 # ruido: diferencia de probabilidad implícita entre local y visitante.
 PARTIDO_PAREJO_MAX_GAP = 0.05

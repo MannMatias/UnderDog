@@ -41,6 +41,7 @@ import pandas as pd
 from include.config import (
     EXCLUDED_LEAGUES,
     FINAL_DATASET_PATH,
+    MAX_PROB_EMPATE_IMPLICITA,
     ODDS_BOOKMAKERS,
     PARTIDO_PAREJO_MAX_GAP,
     PROCESSED_DIR,
@@ -125,6 +126,9 @@ UNDERDOG_GAP_FEATURES = [
     "fastest_sprint_speed",
 ]
 
+# Decimales con los que se escribe cualquier columna flotante del dataset.
+DECIMALES = 4
+
 NULL_REASONS = {
     "prob_home": "Nunca nula: solo entran partidos con las 3 cuotas completas de al menos una casa.",
     "prob_draw": "Idem prob_home.",
@@ -199,12 +203,24 @@ def load_matches(con: sqlite3.Connection) -> pd.DataFrame:
 
     matches = _attach_odds(matches)
     matches = matches[matches["odds_home"].notna()]
+    n_odds = len(matches)
+
+    # Cuarto criterio: la tripleta tiene que ser un mercado 1X2 coherente.
+    # Ver MAX_PROB_EMPATE_IMPLICITA en config.py: por encima de ese tope la
+    # cuota de empate deja de predecir el empate y el margen de la casa se
+    # duplica, o sea que no es un precio pre-partido. Sin un precio real no
+    # hay favorito real, y el target de este dataset ES "gano el no
+    # favorito": la fila no puede responder la pregunta.
+    mercado_coherente = 1 / matches["odds_draw"] <= MAX_PROB_EMPATE_IMPLICITA
+    matches = matches[mercado_coherente]
     n_final = len(matches)
 
     logger.info(
         "Filtros de inclusión: %d partidos en la base -> %d tras excluir ligas sin cuotas "
-        "(%s) -> %d con alineación titular completa -> %d con cuotas 1X2 completas.",
-        n_total, n_ligas, ", ".join(EXCLUDED_LEAGUES), n_xi, n_final,
+        "(%s) -> %d con alineación titular completa -> %d con cuotas 1X2 completas "
+        "-> %d con cuotas coherentes (se excluyen %d con empate implícito > %.0f%%).",
+        n_total, n_ligas, ", ".join(EXCLUDED_LEAGUES), n_xi, n_odds, n_final,
+        n_odds - n_final, MAX_PROB_EMPATE_IMPLICITA * 100,
     )
 
     # equipos por nombre (para que el CSV sea legible, el join es por id)
@@ -531,6 +547,14 @@ def build_dataset() -> pd.DataFrame:
         }
     )
     dataset = dataset.sort_values("fecha").reset_index(drop=True)
+
+    # 4 decimales en todo lo que sea punto flotante. La precision completa
+    # de numpy (prob_home = 0.5960720381078533) no significa nada: las
+    # cuotas de origen vienen con 2 decimales, asi que todo digito mas alla
+    # del cuarto es ruido de la division. Las tres probabilidades siguen
+    # sumando 1.0 a esta precision.
+    float_cols = dataset.select_dtypes(include="float").columns
+    dataset[float_cols] = dataset[float_cols].round(DECIMALES)
     return dataset
 
 

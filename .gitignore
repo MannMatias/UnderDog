@@ -1,0 +1,25 @@
+astro
+.git
+.env
+.DS_Store
+airflow_settings.yaml
+__pycache__/
+*.pyc
+.venv
+.astro/standalone/
+.astro/worktrees/
+airflow-webserver.pid
+webserver_config.py
+airflow.cfg
+airflow.db
+logs/
+.astro/*.local.yml
+.astro/*.local.yaml
+
+**/.astro/dbt_metadata.json
+**/.astro/manifest.slim.json
+
+# Datos crudos y el dataset final: se regeneran corriendo el DAG, no se versionan.
+include/data/raw/
+include/data/processed/
+*.zip

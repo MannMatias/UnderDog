@@ -19,7 +19,8 @@ Cada ítem apunta a dónde está la evidencia. Verificado sobre la corrida final
   - una que decide sobre columnas del modelo: H3 y H4.
   - el único movimiento (H2, controlar por `prob_no_favorito`) está justificado por lo que muestra el gráfico.
 - [x] **Al menos una refutada/inconclusa**: H2 (🟡 → movimiento → 🔴) y H4 (🔴).
-- [ ] **"Qué espero ver" reescrito por el grupo**: está marcado como BORRADOR en las 4 fichas.
+- [x] **"Qué espero ver"** con la expectativa previa del grupo. En H1 y H3 no había una formada, y la ficha lo dice. En H2
+  sospechábamos del mercado; en H4 esperábamos diferencias chicas.
 - [x] **Tabla de columnas candidatas**: Parte 3 del notebook (columna, qué mide, medida, zona, decisión, ¿existiría al predecir?).
   Las 23 candidatas y las 4 descartadas por fuga; entran 12. La versión completa con las 82 columnas de la Entrega 1 está en
   `docs/column_candidates.md` / `.csv`.

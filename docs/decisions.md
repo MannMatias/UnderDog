@@ -152,32 +152,42 @@ pipeline final (corrida `manual__2026-09-22T23:33:47`) o del notebook `notebooks
 - **JUSTIFICACIÓN**: la devolución pidió dejar claro qué columnas son nuestras.
 - **IMPACTO**: el diccionario se genera desde el catálogo (`python -m include.src.columns`) y no puede quedar desactualizado.
 
-## 13. Features eliminadas y transformadas (de 82 a 31 columnas)
+## 13. Columnas del modelo: 12 de 23 candidatas (y de 82 a 31 columnas en Silver)
 
-- **DECISIÓN**: 23 features, 8 columnas no-feature en Silver (clave, metadata, auxiliares y target) y el resto en
-  auditoría, intermedias o eliminadas. Detalle columna por columna en `docs/column_candidates.md`.
-- **EVIDENCIA** (EDA):
+- **DECISIÓN**: Silver tiene 31 columnas: 23 candidatas a feature + 8 que no lo son (clave, metadata, auxiliares y target).
+  De las 23 candidatas, **12 entran al modelo** y 11 salen: siguen en Silver para análisis, pero no van a la Entrega 3.
+  Regla: el semáforo de la cátedra de cada candidata contra el objetivo (separación estandarizada si es numérica, η² si es
+  categórica). Amarillo o verde, entra; rojo, sale.
+- **EVIDENCIA** (`docs/column_candidates.md`, Parte 3 del notebook):
+  - **Entran (amarillo)**: `prob_no_favorito` 0,50 · `prob_draw` 0,43 · gaps del XI: promedio 0,36, defensa 0,34, top 3 0,33,
+    mejor 0,31, mediocampo 0,30, ataque 0,29, reacción 0,28, marca 0,25, peor 0,23, definición 0,22.
+  - **Salen (rojo)**: arquero 0,16 · velocidad 0,14 · fuerza 0,11 · dispersión 0,005 · edad 0,012 · altura 0,002 · `jornada` 0,012 ·
+    `liga` η² 0,0016 · `equipo_favorito` η² 0,0016 · formaciones η² 0,0004 y 0,0013.
+  - `tests/test_silver_dataset.py` recalcula cada valor sobre el Silver real y falla si el catálogo dejó de coincidir.
+- **De 82 a 31 columnas** (lo que pasó con las columnas de la Entrega 1):
   - `*_gap` local − visitante (10): **exactamente derivables** de `nofav_*_gap` + `equipo_favorito` (diferencia máxima 0,0000) → SALEN.
-  - Niveles `home_*/away_*` de 16 métricas (32): no agregan información a los gaps (LR p = 0,42, peor AUC fuera de
-    muestra: 0,651 → 0,648) → TRANSFORMAR en `nofav_*_gap`.
-  - Subatributos del arquero (6): LR p = 0,25, peor fuera de muestra → SALEN.
+  - Niveles `home_*/away_*` de 16 métricas (32): se transforman en `nofav_*_gap`, que es como está planteada la pregunta. El nivel de
+    cada lado no agrega información sobre la diferencia (comparación de modelos: p = 0,42, AUC fuera de muestra 0,651 → 0,648).
+  - Subatributos del arquero (6): redundantes con `gk_overall` (hipótesis 3, correlación 0,81 a 0,87, verde) → SALEN.
   - `odds_home/draw/away`: derivables de las probabilidades → auditoría. `overround`: mide a la casa (B365 1,064 ± 0,008,
     PS 1,024 ± 0,004), correlación −0,02 con el target → auditoría.
   - `pais`: 1:1 con `liga` → SALE. `prob_gap`: `prob_home − prob_away` → SALE. `es_partido_parejo`: constante tras el filtro → SALE.
   - `equipo_local/visitante`: 299 equipos, descriptivas → auditoría. `xi_sin_atributos`: control de calidad → auditoría.
-- **JUSTIFICACIÓN**: no se saca información útil sin evidencia. Cada métrica de la Entrega 1 (arquero, mejor, top 3, peor,
-  promedio, dispersión, velocidad, definición, reacción, marca, fuerza, líneas, edad, altura, formación) sigue en Silver
-  orientada a la pregunta. La diferencia local − visitante se recupera cambiando el signo.
-- **IMPACTO**: 82 → 31 columnas.
+- **JUSTIFICACIÓN**: la decisión de cada columna se defiende con un número y un corte que no elegimos nosotros. Ninguna métrica
+  de la Entrega 1 se borra: todas siguen en Silver, y las que salen del modelo quedan disponibles para análisis.
+- **IMPACTO**: `columns.FEATURE_COLUMNS` (12) es lo que devuelve `split_features_target()` para la Entrega 3. Queda pendiente
+  la redundancia entre gaps del XI (correlaciones de 0,86 a 0,96 entre promedio, top 3 y mejor), que se resuelve al modelar.
 
 ## 14. Decisiones de las hipótesis del EDA
 
-| # | Hipótesis | Zona | Evidencia | Decisión |
-|---|---|---|---|---|
-| H1 | En partidos muy parejos el underdog no está bien definido | 🟢 confirmada | Etiqueta cambia Pinnacle↔Bet365 en 54% (gap ≤ 0,005), 0% desde 0,045 | Umbral 0,05, se filtra |
-| H2 | Con mejor XI, el underdog gana más de lo que dice el mercado | 🟡 inconclusa | Tasa real − esperada por quintil entre −1,3 y +0,1 pp; AUC 0,647 → 0,650 fuera de muestra; LR p < 0,001 | El gap del XI entra; la base a superar es el mercado |
-| H3 | Los subatributos del arquero agregan información a su overall | 🔴 refutada | Correlación 0,81–0,87; LR p = 0,25; peor fuera de muestra | Salen 6 columnas |
-| H4 | `home_*/away_*` son redundantes frente a `nofav_*_gap` | 🟢 confirmada | Derivación exacta; LR p = 0,42; AUC 0,651 → 0,648 | Se transforman a gaps; salen 10 `*_gap` |
+Las cuatro fichas tienen los seis campos del TP2, y cada número se lee contra el semáforo de la cátedra.
+
+| # | Pregunta | Afirmación | Medida → zona | Movimiento | Decisión |
+|---|---|---|---|---|---|
+| H1 | responder | Donde Pinnacle y Bet365 eligen distinto favorito, \|prob_home − prob_away\| es menor | separación estandarizada 1,43 → 🟢 | ninguno | Separar poblaciones: umbral 0,05 (0% de discrepancias por encima) |
+| H2 | responder | `nofav_xi_overall_mean_gap` es mayor cuando gana el underdog | separación 0,36 → 🟡 | controlar por `prob_no_favorito` (correlación 0,66 con el gap): 0,03 a 0,16 → 🔴 | **Refutada.** El gap del XI entra, pero la Entrega 3 se compara contra el modelo solo-mercado |
+| H3 | decidir columnas | Los subatributos del arquero correlacionan > 0,6 con `gk_overall` | correlación 0,81 a 0,87 → 🟢 (brecha Spearman−Pearson ≤ 0,012) | ninguno | Salen 6 columnas |
+| H4 | decidir columna | La tasa de victoria del underdog cambia según la liga | η² 0,0016 → 🔴 | ninguno | **Refutada.** `liga` sale del modelo |
 
 ## 15. La fuente es una base de datos (arquitectura)
 

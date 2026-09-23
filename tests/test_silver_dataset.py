@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from include.config import AUDIT_DIR, BRONZE_DIR, INTERMEDIATE_DIR, SILVER_DATASET_PATH, TARGET_COLUMN, UNDERDOG_MIN_PROB_GAP
-from include.src.columns import LEAKAGE_COLUMNS, SILVER_COLUMN_NAMES
+from include.src.columns import CANDIDATE_COLUMNS, CANDIDATE_EVIDENCE, LEAKAGE_COLUMNS, SILVER_COLUMN_NAMES, SILVER_COLUMNS
 from include.src.quality_check import ROUNDING_TOLERANCE, run_quality_checks
 
 pytestmark = pytest.mark.skipif(not SILVER_DATASET_PATH.exists(), reason="Silver no generado: correr el DAG primero")
@@ -90,3 +90,20 @@ def test_real_lineup_snapshots_are_strictly_before_each_match():
 def test_lineup_features_cover_every_silver_match(silver):
     lineups = pd.read_parquet(INTERMEDIATE_DIR / "lineup_features.parquet")
     assert set(silver["match_id"]) <= set(lineups["match_api_id"])
+
+
+def test_candidate_table_matches_the_data(silver):
+    """La zona y la decisión de cada candidata en el catálogo salen del
+    semáforo recalculado sobre el Silver real: si los datos cambian, este test
+    avisa que la tabla de columnas candidatas quedó vieja."""
+    from include.src.semaforo import medida_contra_target, zona
+
+    spec = {c.name: c for c in SILVER_COLUMNS}
+    assert set(CANDIDATE_EVIDENCE) == set(CANDIDATE_COLUMNS)
+    for column in CANDIDATE_COLUMNS:
+        medida, valor = medida_contra_target(silver, column)
+        doc_medida, doc_valor = CANDIDATE_EVIDENCE[column]
+        assert medida == doc_medida, column
+        assert abs(valor - doc_valor) < 0.001, (column, valor, doc_valor)
+        assert spec[column].zone == zona(medida, valor), column
+        assert spec[column].decision == ("SALE" if zona(medida, valor) == "rojo" else "ENTRA"), column

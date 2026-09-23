@@ -6,38 +6,38 @@
 
 ## Silver: `include/data/silver/underdog_dataset.parquet` (31 columnas)
 
-| columna | rol | origen | tipo | disponible | feature | nulos |
+| columna | rol | origen | tipo | disponible | entra al modelo | nulos |
 |---|---|---|---|---|---|---|
 | `match_id` | identificador | fuente | entero | pre-partido | no | 0 |
 | `fecha` | metadata | fuente | fecha | pre-partido | no | 0 |
 | `temporada` | metadata | fuente | texto | pre-partido | no | 0 |
-| `jornada` | feature | fuente | entero | pre-partido | sí | 0 |
-| `liga` | feature | fuente | categórica | pre-partido | sí | 0 |
+| `jornada` | feature | fuente | entero | pre-partido | no | 0 |
+| `liga` | feature | fuente | categórica | pre-partido | no | 0 |
 | `odds_source` | metadata | calculada | texto | pre-partido | no | 0 |
 | `prob_home` | auxiliar | calculada | decimal | pre-partido | no | 0 |
 | `prob_draw` | feature | calculada | decimal | pre-partido | sí | 0 |
 | `prob_away` | auxiliar | calculada | decimal | pre-partido | no | 0 |
-| `equipo_favorito` | feature | calculada | categórica | pre-partido | sí | 0 |
+| `equipo_favorito` | feature | calculada | categórica | pre-partido | no | 0 |
 | `prob_favorito` | auxiliar | calculada | decimal | pre-partido | no | 0 |
 | `prob_no_favorito` | feature | calculada | decimal | pre-partido | sí | 0 |
 | `nofav_xi_overall_mean_gap` | feature | calculada | decimal | pre-partido | sí | 0 |
 | `nofav_top3_overall_gap` | feature | calculada | decimal | pre-partido | sí | 0 |
 | `nofav_best_overall_gap` | feature | calculada | decimal | pre-partido | sí | 0 |
 | `nofav_worst_overall_gap` | feature | calculada | decimal | pre-partido | sí | 0 |
-| `nofav_overall_std_gap` | feature | calculada | decimal | pre-partido | sí | 0 |
-| `nofav_gk_overall_gap` | feature | calculada | decimal | pre-partido | sí | 4 |
+| `nofav_overall_std_gap` | feature | calculada | decimal | pre-partido | no | 0 |
+| `nofav_gk_overall_gap` | feature | calculada | decimal | pre-partido | no | 4 |
 | `nofav_def_overall_gap` | feature | calculada | decimal | pre-partido | sí | 2 |
 | `nofav_mid_overall_gap` | feature | calculada | decimal | pre-partido | sí | 2 |
 | `nofav_att_overall_gap` | feature | calculada | decimal | pre-partido | sí | 2 |
-| `nofav_fastest_sprint_speed_gap` | feature | calculada | decimal | pre-partido | sí | 0 |
+| `nofav_fastest_sprint_speed_gap` | feature | calculada | decimal | pre-partido | no | 0 |
 | `nofav_best_finishing_gap` | feature | calculada | decimal | pre-partido | sí | 0 |
 | `nofav_best_reactions_gap` | feature | calculada | decimal | pre-partido | sí | 0 |
 | `nofav_best_marking_gap` | feature | calculada | decimal | pre-partido | sí | 0 |
-| `nofav_strongest_strength_gap` | feature | calculada | decimal | pre-partido | sí | 0 |
-| `nofav_xi_age_mean_gap` | feature | calculada | decimal | pre-partido | sí | 0 |
-| `nofav_xi_height_mean_gap` | feature | calculada | decimal | pre-partido | sí | 0 |
-| `nofav_formacion` | feature | calculada | categórica | pre-partido | sí | 2 |
-| `fav_formacion` | feature | calculada | categórica | pre-partido | sí | 2 |
+| `nofav_strongest_strength_gap` | feature | calculada | decimal | pre-partido | no | 0 |
+| `nofav_xi_age_mean_gap` | feature | calculada | decimal | pre-partido | no | 0 |
+| `nofav_xi_height_mean_gap` | feature | calculada | decimal | pre-partido | no | 0 |
+| `nofav_formacion` | feature | calculada | categórica | pre-partido | no | 2 |
+| `fav_formacion` | feature | calculada | categórica | pre-partido | no | 2 |
 | `gano_no_favorito` | target | calculada | booleano | post-partido | no | 0 |
 
 ### `match_id`
@@ -49,7 +49,7 @@
 - **De dónde sale**: `match.match_api_id`
 - **Fórmula**: —
 - **Disponible**: pre-partido
-- **¿Feature?**: no (IDENTIFICADOR)
+- **¿Entra al modelo?**: no (IDENTIFICADOR)
 - **Motivo**: Clave, no feature: su valor no dice nada del partido.
 - **¿Puede ser nula?**: no
 - **Nulos en el Silver actual**: 0
@@ -63,7 +63,7 @@
 - **De dónde sale**: `match.date`
 - **Fórmula**: —
 - **Disponible**: pre-partido
-- **¿Feature?**: no (AUXILIAR)
+- **¿Entra al modelo?**: no (AUXILIAR)
 - **Motivo**: Se conserva para separar train/test en el tiempo; no es feature.
 - **¿Puede ser nula?**: no
 - **Nulos en el Silver actual**: 0
@@ -77,7 +77,7 @@
 - **De dónde sale**: `match.season`
 - **Fórmula**: —
 - **Disponible**: pre-partido
-- **¿Feature?**: no (AUXILIAR)
+- **¿Entra al modelo?**: no (AUXILIAR)
 - **Motivo**: Se conserva para cortes temporales; como feature solo identificaría la época.
 - **¿Puede ser nula?**: no
 - **Nulos en el Silver actual**: 0
@@ -91,8 +91,8 @@
 - **De dónde sale**: `match.stage`
 - **Fórmula**: —
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Pre-partido y barata, pero sin señal marginal en el EDA (tasa real - probabilidad implícita entre -1,2 y +0,2 pp por tramo de jornadas).
+- **¿Entra al modelo?**: candidata, no entra (SALE)
+- **Motivo**: Se conoce antes del partido. Contra el target: separación estandarizada = 0,012 (rojo), no va al modelo; queda en Silver para análisis.
 - **¿Puede ser nula?**: no
 - **Nulos en el Silver actual**: 0
 
@@ -105,8 +105,8 @@
 - **De dónde sale**: `league.name`
 - **Fórmula**: —
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Pre-partido. Señal débil (test de razón de verosimilitud p = 0,06; tasa real - probabilidad implícita por liga entre -2,1 y +1,5 pp).
+- **¿Entra al modelo?**: candidata, no entra (SALE)
+- **Motivo**: Se conoce antes del partido. Contra el target: η² = 0,0016 (rojo), no va al modelo; queda en Silver para análisis. Hipótesis 4 (refutada): la tasa de victoria del underdog casi no cambia entre ligas.
 - **¿Puede ser nula?**: no
 - **Nulos en el Silver actual**: 0
 
@@ -119,7 +119,7 @@
 - **De dónde sale**: `prepare_matches`
 - **Fórmula**: primera casa de ODDS_BOOKMAKERS con las 3 cuotas completas
 - **Disponible**: pre-partido
-- **¿Feature?**: no (AUXILIAR)
+- **¿Entra al modelo?**: no (AUXILIAR)
 - **Motivo**: Trazabilidad. No es feature: está confundida con la época (B365 hasta 2011/12, PS desde 2012/13).
 - **¿Puede ser nula?**: no
 - **Nulos en el Silver actual**: 0
@@ -133,7 +133,7 @@
 - **De dónde sale**: `prepare_matches`
 - **Fórmula**: (1 / odds_home) / overround
 - **Disponible**: pre-partido
-- **¿Feature?**: no (AUXILIAR)
+- **¿Entra al modelo?**: no (AUXILIAR)
 - **Motivo**: Define al favorito y valida prob_home + prob_draw + prob_away = 1. Como feature es redundante con prob_favorito/prob_no_favorito + equipo_favorito.
 - **¿Puede ser nula?**: no
 - **Nulos en el Silver actual**: 0
@@ -147,8 +147,8 @@
 - **De dónde sale**: `prepare_matches`
 - **Fórmula**: (1 / odds_draw) / overround
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Precio de mercado anterior al partido. Un empate también es 'no gana el underdog'.
+- **¿Entra al modelo?**: sí (ENTRA)
+- **Motivo**: Precio de mercado anterior al partido. Contra el target: separación estandarizada = 0,429 (amarillo), entra al modelo. Cola larga (asimetría -1,3), pero la relación con el target es recta (brecha Spearman - Pearson 0,013): entra sin transformar.
 - **¿Puede ser nula?**: no
 - **Nulos en el Silver actual**: 0
 
@@ -161,7 +161,7 @@
 - **De dónde sale**: `prepare_matches`
 - **Fórmula**: (1 / odds_away) / overround
 - **Disponible**: pre-partido
-- **¿Feature?**: no (AUXILIAR)
+- **¿Entra al modelo?**: no (AUXILIAR)
 - **Motivo**: Idem prob_home.
 - **¿Puede ser nula?**: no
 - **Nulos en el Silver actual**: 0
@@ -175,8 +175,8 @@
 - **De dónde sale**: `define_underdog_and_target`
 - **Fórmula**: 'local' si prob_home > prob_away, 'visitante' si prob_home < prob_away
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Ubica la localía del underdog: el underdog local gana 0,6 pp más de lo que dice el mercado y el visitante 0,8 pp menos.
+- **¿Entra al modelo?**: candidata, no entra (SALE)
+- **Motivo**: Sale de las cuotas pre-partido. Contra el target: η² = 0,0016 (rojo), no va al modelo; queda en Silver para análisis. La localía ya está en las probabilidades del mercado.
 - **¿Puede ser nula?**: no
 - **Nulos en el Silver actual**: 0
 
@@ -189,7 +189,7 @@
 - **De dónde sale**: `define_underdog_and_target`
 - **Fórmula**: max(prob_home, prob_away)
 - **Disponible**: pre-partido
-- **¿Feature?**: no (AUXILIAR)
+- **¿Entra al modelo?**: no (AUXILIAR)
 - **Motivo**: Define el umbral (prob_favorito - prob_no_favorito > 0.05). Como feature es derivable: 1 - prob_draw - prob_no_favorito.
 - **¿Puede ser nula?**: no
 - **Nulos en el Silver actual**: 0
@@ -203,8 +203,8 @@
 - **De dónde sale**: `define_underdog_and_target`
 - **Fórmula**: min(prob_home, prob_away)
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Feature principal: el mercado está calibrado (hipótesis del EDA) y es la línea de base a superar.
+- **¿Entra al modelo?**: sí (ENTRA)
+- **Motivo**: Precio de mercado anterior al partido. Contra el target: separación estandarizada = 0,497 (amarillo), entra al modelo. Es la línea de base del modelo: el mercado solo.
 - **¿Puede ser nula?**: no
 - **Nulos en el Silver actual**: 0
 
@@ -217,8 +217,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = promedio de overall_rating de los 11 titulares
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Aporta información por encima del mercado pero chica (hipótesis 2: inconclusa); correlación 0,93 con nofav_top3_overall_gap.
+- **¿Entra al modelo?**: sí (ENTRA)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,358 (amarillo), entra al modelo. Hipótesis 2 (refutada): al controlar por prob_no_favorito la separación cae a 0,08 (rojo). Entra, pero la Entrega 3 tiene que medir si agrega algo sobre el modelo solo-mercado.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito ningún titular tiene snapshot de atributos anterior al partido
 - **Nulos en el Silver actual**: 0
 
@@ -231,8 +231,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = promedio de los 3 mayores overall_rating del once
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Correlación 0,96 con nofav_best_overall_gap y 0,93 con nofav_xi_overall_mean_gap.
+- **¿Entra al modelo?**: sí (ENTRA)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,329 (amarillo), entra al modelo. Correlación 0,96 con nofav_best_overall_gap y 0,93 con nofav_xi_overall_mean_gap: redundancia a resolver en la Entrega 3.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito ningún titular tiene snapshot de atributos anterior al partido
 - **Nulos en el Silver actual**: 0
 
@@ -245,8 +245,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = máximo overall_rating del once
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Correlación 0,96 con nofav_top3_overall_gap: casi la misma información; la etapa de modelado puede quedarse con una de las dos.
+- **¿Entra al modelo?**: sí (ENTRA)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,307 (amarillo), entra al modelo. Correlación 0,96 con nofav_top3_overall_gap: redundancia a resolver en la Entrega 3.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito ningún titular tiene snapshot de atributos anterior al partido
 - **Nulos en el Silver actual**: 0
 
@@ -259,8 +259,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = mínimo overall_rating del once
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Diferencia orientada a la pregunta; sin redundancia exacta con otra columna.
+- **¿Entra al modelo?**: sí (ENTRA)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,225 (amarillo), entra al modelo.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito ningún titular tiene snapshot de atributos anterior al partido
 - **Nulos en el Silver actual**: 0
 
@@ -273,8 +273,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = desvío estándar de overall_rating del once
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Diferencia orientada a la pregunta; sin redundancia exacta con otra columna.
+- **¿Entra al modelo?**: candidata, no entra (SALE)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = -0,005 (rojo), no va al modelo; queda en Silver para análisis.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito menos de 2 titulares con snapshot previo
 - **Nulos en el Silver actual**: 0
 
@@ -287,8 +287,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = overall_rating del titular con Y=1 (si hay dos, el de mayor gk_reflexes)
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Evidencia mixta (hipótesis 3): mejora el ajuste dentro de muestra (p = 0,0015) pero no la predicción fuera de muestra.
+- **¿Entra al modelo?**: candidata, no entra (SALE)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,160 (rojo), no va al modelo; queda en Silver para análisis. Hipótesis 3: los subatributos del arquero salen por redundancia; el propio gk_overall tampoco separa.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito ningún titular tiene coordenada Y de arquero, o el arquero no tiene snapshot previo
 - **Nulos en el Silver actual**: 4
 
@@ -301,8 +301,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = promedio overall de titulares con 1 < Y <= 3
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Diferencia orientada a la pregunta; sin redundancia exacta con otra columna.
+- **¿Entra al modelo?**: sí (ENTRA)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,337 (amarillo), entra al modelo.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito ningún titular de ese equipo quedó en esa línea según su coordenada Y (coordenadas mal cargadas en la fuente)
 - **Nulos en el Silver actual**: 2
 
@@ -315,8 +315,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = promedio overall de titulares con 3 < Y <= 7
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Diferencia orientada a la pregunta; sin redundancia exacta con otra columna.
+- **¿Entra al modelo?**: sí (ENTRA)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,303 (amarillo), entra al modelo.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito ningún titular de ese equipo quedó en esa línea según su coordenada Y (coordenadas mal cargadas en la fuente)
 - **Nulos en el Silver actual**: 2
 
@@ -329,8 +329,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = promedio overall de titulares con Y > 7
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Diferencia orientada a la pregunta; sin redundancia exacta con otra columna.
+- **¿Entra al modelo?**: sí (ENTRA)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,287 (amarillo), entra al modelo.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito ningún titular de ese equipo quedó en esa línea según su coordenada Y (coordenadas mal cargadas en la fuente)
 - **Nulos en el Silver actual**: 2
 
@@ -343,8 +343,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = máximo sprint_speed del once
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Diferencia orientada a la pregunta; sin redundancia exacta con otra columna.
+- **¿Entra al modelo?**: candidata, no entra (SALE)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,144 (rojo), no va al modelo; queda en Silver para análisis.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito ningún titular tiene snapshot de atributos anterior al partido
 - **Nulos en el Silver actual**: 0
 
@@ -357,8 +357,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = máximo finishing del once
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Diferencia orientada a la pregunta; sin redundancia exacta con otra columna.
+- **¿Entra al modelo?**: sí (ENTRA)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,218 (amarillo), entra al modelo.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito ningún titular tiene snapshot de atributos anterior al partido
 - **Nulos en el Silver actual**: 0
 
@@ -371,8 +371,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = máximo reactions del once
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Diferencia orientada a la pregunta; sin redundancia exacta con otra columna.
+- **¿Entra al modelo?**: sí (ENTRA)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,276 (amarillo), entra al modelo.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito ningún titular tiene snapshot de atributos anterior al partido
 - **Nulos en el Silver actual**: 0
 
@@ -385,8 +385,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = máximo marking del once
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Diferencia orientada a la pregunta; sin redundancia exacta con otra columna.
+- **¿Entra al modelo?**: sí (ENTRA)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,251 (amarillo), entra al modelo.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito ningún titular tiene snapshot de atributos anterior al partido
 - **Nulos en el Silver actual**: 0
 
@@ -399,8 +399,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = máximo strength del once
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Diferencia orientada a la pregunta; sin redundancia exacta con otra columna.
+- **¿Entra al modelo?**: candidata, no entra (SALE)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,105 (rojo), no va al modelo; queda en Silver para análisis.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito ningún titular tiene snapshot de atributos anterior al partido
 - **Nulos en el Silver actual**: 0
 
@@ -413,8 +413,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = promedio de (fecha del partido - birthday) / 365,25
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Diferencia orientada a la pregunta; sin redundancia exacta con otra columna.
+- **¿Entra al modelo?**: candidata, no entra (SALE)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = -0,012 (rojo), no va al modelo; queda en Silver para análisis.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito titular sin fecha de nacimiento en la tabla player
 - **Nulos en el Silver actual**: 0
 
@@ -427,8 +427,8 @@
 - **De dónde sale**: `build_lineup_features + build_silver_dataset`
 - **Fórmula**: underdog - favorito, donde cada lado = promedio de height de los 11 titulares
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (ENTRA)
-- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Diferencia orientada a la pregunta; sin redundancia exacta con otra columna.
+- **¿Entra al modelo?**: candidata, no entra (SALE)
+- **Motivo**: Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. Contra el target: separación estandarizada = 0,002 (rojo), no va al modelo; queda en Silver para análisis.
 - **¿Puede ser nula?**: sí: nula si en el underdog o en el favorito titular sin altura en la tabla player
 - **Nulos en el Silver actual**: 0
 
@@ -441,8 +441,8 @@
 - **De dónde sale**: `build_lineup_features`
 - **Fórmula**: conteo de titulares por línea según su coordenada Y
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (TRANSFORMAR)
-- **Motivo**: Existe con la alineación. Sin señal incremental en el EDA (p = 0,66); 12 categorías: codificar agrupando las raras. Los mediapuntas (Y=8) cuentan como ataque: un 4-2-3-1 aparece como 4-2-4.
+- **¿Entra al modelo?**: candidata, no entra (SALE)
+- **Motivo**: Existe al publicarse la alineación. Contra el target: η² = 0,0004 (rojo), no va al modelo; queda en Silver para análisis. 12 categorías. Los mediapuntas (Y=8) cuentan como ataque: un 4-2-3-1 aparece como 4-2-4.
 - **¿Puede ser nula?**: sí: las coordenadas Y de los titulares de campo vienen vacías o en 0 en la fuente: no se puede reconstruir la formación (antes figuraba como un falso '0-0-0')
 - **Nulos en el Silver actual**: 2
 
@@ -455,8 +455,8 @@
 - **De dónde sale**: `build_lineup_features`
 - **Fórmula**: idem nofav_formacion
 - **Disponible**: pre-partido
-- **¿Feature?**: sí (TRANSFORMAR)
-- **Motivo**: Idem nofav_formacion.
+- **¿Entra al modelo?**: candidata, no entra (SALE)
+- **Motivo**: Existe al publicarse la alineación. Contra el target: η² = 0,0013 (rojo), no va al modelo; queda en Silver para análisis.
 - **¿Puede ser nula?**: sí: las coordenadas Y de los titulares de campo vienen vacías o en 0 en la fuente: no se puede reconstruir la formación (antes figuraba como un falso '0-0-0')
 - **Nulos en el Silver actual**: 2
 
@@ -469,7 +469,7 @@
 - **De dónde sale**: `define_underdog_and_target`
 - **Fórmula**: (favorito local y ganó el visitante) o (favorito visitante y ganó el local)
 - **Disponible**: post-partido
-- **¿Feature?**: no (TARGET)
+- **¿Entra al modelo?**: no (TARGET)
 - **Motivo**: Es lo que se quiere predecir: nunca puede ser feature.
 - **¿Puede ser nula?**: no
 - **Nulos en el Silver actual**: 0
@@ -487,7 +487,7 @@ Mismas filas que Silver, unidas por `match_id`. Tiene lo que **no puede** ser fe
 - **De dónde sale**: `team.team_long_name`
 - **Fórmula**: —
 - **Disponible**: pre-partido
-- **¿Feature?**: no (SOLO AUDITORÍA)
+- **¿Entra al modelo?**: no (SOLO AUDITORÍA)
 - **Motivo**: Descriptiva: 299 equipos, no generaliza a partidos nuevos. Solo para leer resultados.
 - **¿Puede ser nula?**: no
 
@@ -500,7 +500,7 @@ Mismas filas que Silver, unidas por `match_id`. Tiene lo que **no puede** ser fe
 - **De dónde sale**: `team.team_long_name`
 - **Fórmula**: —
 - **Disponible**: pre-partido
-- **¿Feature?**: no (SOLO AUDITORÍA)
+- **¿Entra al modelo?**: no (SOLO AUDITORÍA)
 - **Motivo**: Idem equipo_local.
 - **¿Puede ser nula?**: no
 
@@ -513,7 +513,7 @@ Mismas filas que Silver, unidas por `match_id`. Tiene lo que **no puede** ser fe
 - **De dónde sale**: `match.<casa>h`
 - **Fórmula**: —
 - **Disponible**: pre-partido
-- **¿Feature?**: no (SOLO AUDITORÍA)
+- **¿Entra al modelo?**: no (SOLO AUDITORÍA)
 - **Motivo**: Derivable: prob_home = (1/odds_home)/overround. Se guarda para reconstruir las probabilidades.
 - **¿Puede ser nula?**: no
 
@@ -526,7 +526,7 @@ Mismas filas que Silver, unidas por `match_id`. Tiene lo que **no puede** ser fe
 - **De dónde sale**: `match.<casa>d`
 - **Fórmula**: —
 - **Disponible**: pre-partido
-- **¿Feature?**: no (SOLO AUDITORÍA)
+- **¿Entra al modelo?**: no (SOLO AUDITORÍA)
 - **Motivo**: Idem odds_home.
 - **¿Puede ser nula?**: no
 
@@ -539,7 +539,7 @@ Mismas filas que Silver, unidas por `match_id`. Tiene lo que **no puede** ser fe
 - **De dónde sale**: `match.<casa>a`
 - **Fórmula**: —
 - **Disponible**: pre-partido
-- **¿Feature?**: no (SOLO AUDITORÍA)
+- **¿Entra al modelo?**: no (SOLO AUDITORÍA)
 - **Motivo**: Idem odds_home.
 - **¿Puede ser nula?**: no
 
@@ -552,7 +552,7 @@ Mismas filas que Silver, unidas por `match_id`. Tiene lo que **no puede** ser fe
 - **De dónde sale**: `prepare_matches`
 - **Fórmula**: 1/odds_home + 1/odds_draw + 1/odds_away
 - **Disponible**: pre-partido
-- **¿Feature?**: no (SOLO AUDITORÍA)
+- **¿Entra al modelo?**: no (SOLO AUDITORÍA)
 - **Motivo**: Mide a la casa, no al partido: depende casi solo de odds_source (B365 ~1,064, PS ~1,024) y su correlación con el target es -0,02.
 - **¿Puede ser nula?**: no
 
@@ -565,7 +565,7 @@ Mismas filas que Silver, unidas por `match_id`. Tiene lo que **no puede** ser fe
 - **De dónde sale**: `match.home_team_goal`
 - **Fórmula**: —
 - **Disponible**: post-partido
-- **¿Feature?**: no (SOLO AUDITORÍA)
+- **¿Entra al modelo?**: no (SOLO AUDITORÍA)
 - **Motivo**: FUGA: solo existe después del partido. Se usa únicamente para construir el target.
 - **¿Puede ser nula?**: no
 
@@ -578,7 +578,7 @@ Mismas filas que Silver, unidas por `match_id`. Tiene lo que **no puede** ser fe
 - **De dónde sale**: `match.away_team_goal`
 - **Fórmula**: —
 - **Disponible**: post-partido
-- **¿Feature?**: no (SOLO AUDITORÍA)
+- **¿Entra al modelo?**: no (SOLO AUDITORÍA)
 - **Motivo**: FUGA: idem goles_local.
 - **¿Puede ser nula?**: no
 
@@ -591,7 +591,7 @@ Mismas filas que Silver, unidas por `match_id`. Tiene lo que **no puede** ser fe
 - **De dónde sale**: `define_underdog_and_target`
 - **Fórmula**: comparación goles_local vs goles_visitante
 - **Disponible**: post-partido
-- **¿Feature?**: no (SOLO AUDITORÍA)
+- **¿Entra al modelo?**: no (SOLO AUDITORÍA)
 - **Motivo**: FUGA: es el resultado del partido.
 - **¿Puede ser nula?**: no
 
@@ -604,7 +604,7 @@ Mismas filas que Silver, unidas por `match_id`. Tiene lo que **no puede** ser fe
 - **De dónde sale**: `define_underdog_and_target`
 - **Fórmula**: resultado_ft visto desde el underdog
 - **Disponible**: post-partido
-- **¿Feature?**: no (SOLO AUDITORÍA)
+- **¿Entra al modelo?**: no (SOLO AUDITORÍA)
 - **Motivo**: FUGA: contiene el target (gano <=> gano_no_favorito).
 - **¿Puede ser nula?**: no
 
@@ -617,7 +617,7 @@ Mismas filas que Silver, unidas por `match_id`. Tiene lo que **no puede** ser fe
 - **De dónde sale**: `build_lineup_features`
 - **Fórmula**: cantidad de titulares sin snapshot anterior al partido
 - **Disponible**: pre-partido
-- **¿Feature?**: no (SOLO AUDITORÍA)
+- **¿Entra al modelo?**: no (SOLO AUDITORÍA)
 - **Motivo**: Control de calidad de la fila (0 en casi todas), no describe el partido.
 - **¿Puede ser nula?**: no
 
@@ -630,6 +630,6 @@ Mismas filas que Silver, unidas por `match_id`. Tiene lo que **no puede** ser fe
 - **De dónde sale**: `build_lineup_features`
 - **Fórmula**: idem
 - **Disponible**: pre-partido
-- **¿Feature?**: no (SOLO AUDITORÍA)
+- **¿Entra al modelo?**: no (SOLO AUDITORÍA)
 - **Motivo**: Idem home_xi_sin_atributos.
 - **¿Puede ser nula?**: no

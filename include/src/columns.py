@@ -24,6 +24,7 @@ from dataclasses import asdict, dataclass
 import pandas as pd
 
 from include.config import TARGET_COLUMN, UNDERDOG_MIN_PROB_GAP
+from include.src.semaforo import NOMBRE, zona
 
 PRE = "pre-partido"
 POST = "post-partido"
@@ -47,7 +48,12 @@ class ColumnSpec:
 
     @property
     def is_feature(self) -> bool:
+        """Candidata a feature: existe antes del partido y se evaluó."""
         return self.role == "feature"
+
+    @property
+    def enters_model(self) -> bool:
+        return self.is_feature and self.decision in ("ENTRA", "TRANSFORMAR")
 
     @property
     def leaks_outcome(self) -> bool:
@@ -96,33 +102,89 @@ SIDE_METRICS: dict[str, tuple[str, str, str]] = {
 # subatributos del arquero no entran (hipótesis 3 del EDA).
 GAP_METRICS = [m for m in SIDE_METRICS if m not in ("gk_reflexes", "gk_diving", "gk_handling")]
 
-# Evidencia para el semáforo de cada gap. Se completa con los números del EDA
-# (notebooks/entrega_2_eda.ipynb, sección de redundancia).
-_GAP_ZONE = {
-    "best_overall": ("amarillo", "correlación 0,96 con nofav_top3_overall_gap: casi la misma información; la etapa de modelado puede quedarse con una de las dos"),
-    "top3_overall": ("amarillo", "correlación 0,96 con nofav_best_overall_gap y 0,93 con nofav_xi_overall_mean_gap"),
-    "xi_overall_mean": ("amarillo", "aporta información por encima del mercado pero chica (hipótesis 2: inconclusa); correlación 0,93 con nofav_top3_overall_gap"),
-    "gk_overall": ("amarillo", "evidencia mixta (hipótesis 3): mejora el ajuste dentro de muestra (p = 0,0015) pero no la predicción fuera de muestra"),
+# -----------------------------------------------------------------------------
+# Semáforo de cada columna candidata contra el target (consigna del TP2),
+# medido sobre el Silver final: separación estandarizada si la columna es
+# numérica, η² si es categórica. Regla de decisión:
+#     amarillo o verde -> ENTRA al modelo
+#     rojo             -> SALE del modelo (queda en Silver para análisis)
+# tests/test_silver_dataset.py recalcula estos valores sobre los datos y falla
+# si dejaron de coincidir: la tabla de candidatas no puede quedar vieja.
+# -----------------------------------------------------------------------------
+
+CANDIDATE_EVIDENCE: dict[str, tuple[str, float]] = {
+    "jornada": ("separacion_estandarizada", 0.012),
+    "liga": ("eta2", 0.0016),
+    "prob_draw": ("separacion_estandarizada", 0.429),
+    "equipo_favorito": ("eta2", 0.0016),
+    "prob_no_favorito": ("separacion_estandarizada", 0.497),
+    "nofav_xi_overall_mean_gap": ("separacion_estandarizada", 0.358),
+    "nofav_top3_overall_gap": ("separacion_estandarizada", 0.329),
+    "nofav_best_overall_gap": ("separacion_estandarizada", 0.307),
+    "nofav_worst_overall_gap": ("separacion_estandarizada", 0.225),
+    "nofav_overall_std_gap": ("separacion_estandarizada", -0.005),
+    "nofav_gk_overall_gap": ("separacion_estandarizada", 0.160),
+    "nofav_def_overall_gap": ("separacion_estandarizada", 0.337),
+    "nofav_mid_overall_gap": ("separacion_estandarizada", 0.303),
+    "nofav_att_overall_gap": ("separacion_estandarizada", 0.287),
+    "nofav_fastest_sprint_speed_gap": ("separacion_estandarizada", 0.144),
+    "nofav_best_finishing_gap": ("separacion_estandarizada", 0.218),
+    "nofav_best_reactions_gap": ("separacion_estandarizada", 0.276),
+    "nofav_best_marking_gap": ("separacion_estandarizada", 0.251),
+    "nofav_strongest_strength_gap": ("separacion_estandarizada", 0.105),
+    "nofav_xi_age_mean_gap": ("separacion_estandarizada", -0.012),
+    "nofav_xi_height_mean_gap": ("separacion_estandarizada", 0.002),
+    "nofav_formacion": ("eta2", 0.0004),
+    "fav_formacion": ("eta2", 0.0013),
 }
+
+# Lo que agrega cada hipótesis o hallazgo del EDA a la decisión.
+_CANDIDATE_NOTES = {
+    "prob_no_favorito": "Es la línea de base del modelo: el mercado solo.",
+    "prob_draw": "Cola larga (asimetría -1,3), pero la relación con el target es recta (brecha Spearman - Pearson 0,013): entra sin transformar.",
+    "liga": "Hipótesis 4 (refutada): la tasa de victoria del underdog casi no cambia entre ligas.",
+    "equipo_favorito": "La localía ya está en las probabilidades del mercado.",
+    "nofav_xi_overall_mean_gap": "Hipótesis 2 (refutada): al controlar por prob_no_favorito la separación cae a 0,08 (rojo). Entra, pero la Entrega 3 tiene que medir si agrega algo sobre el modelo solo-mercado.",
+    "nofav_top3_overall_gap": "Correlación 0,96 con nofav_best_overall_gap y 0,93 con nofav_xi_overall_mean_gap: redundancia a resolver en la Entrega 3.",
+    "nofav_best_overall_gap": "Correlación 0,96 con nofav_top3_overall_gap: redundancia a resolver en la Entrega 3.",
+    "nofav_gk_overall_gap": "Hipótesis 3: los subatributos del arquero salen por redundancia; el propio gk_overall tampoco separa.",
+    "nofav_formacion": "12 categorías. Los mediapuntas (Y=8) cuentan como ataque: un 4-2-3-1 aparece como 4-2-4.",
+}
+
+
+def _fmt(valor: float, medida: str) -> str:
+    return (f"{valor:.4f}" if medida == "eta2" else f"{valor:.3f}").replace(".", ",")
+
+
+def _semaforo(name: str, base_reason: str) -> tuple[str, str, str]:
+    """(zona, decisión, motivo) de una candidata según su evidencia."""
+    medida, valor = CANDIDATE_EVIDENCE[name]
+    zone = zona(medida, valor)
+    decision = "SALE" if zone == "rojo" else "ENTRA"
+    consecuencia = "no va al modelo; queda en Silver para análisis" if decision == "SALE" else "entra al modelo"
+    reason = f"{base_reason} Contra el target: {NOMBRE[medida]} = {_fmt(valor, medida)} ({zone}), {consecuencia}."
+    if name in _CANDIDATE_NOTES:
+        reason += f" {_CANDIDATE_NOTES[name]}"
+    return zone, decision, reason
+
+
+def _candidate(name: str, description: str, dtype: str, origin: str, source: str, formula: str,
+               base_reason: str, null_reason: str = "") -> ColumnSpec:
+    zone, decision, reason = _semaforo(name, base_reason)
+    return ColumnSpec(name, description, dtype, "feature", origin, source, formula, PRE, decision, zone, reason, null_reason)
 
 
 def _gap_spec(metric: str) -> ColumnSpec:
     what, formula, why_null = SIDE_METRICS[metric]
-    zone, note = _GAP_ZONE.get(metric, ("verde", "diferencia orientada a la pregunta; sin redundancia exacta con otra columna"))
-    null_reason = f"nula si en el underdog o en el favorito {why_null}"
-    return ColumnSpec(
-        name=f"nofav_{metric}_gap",
-        description=f"Ventaja del underdog en {what}. Positivo = el underdog es superior.",
-        dtype="decimal",
-        role="feature",
-        origin="calculada",
-        source="build_lineup_features + build_silver_dataset",
-        formula=f"underdog - favorito, donde cada lado = {formula}",
-        available=PRE,
-        decision="ENTRA",
-        zone=zone,
-        reason=f"Existe al publicarse las alineaciones: atributos con snapshot anterior al partido. {note[0].upper()}{note[1:]}.",
-        null_reason=null_reason,
+    return _candidate(
+        f"nofav_{metric}_gap",
+        f"Ventaja del underdog en {what}. Positivo = el underdog es superior.",
+        "decimal",
+        "calculada",
+        "build_lineup_features + build_silver_dataset",
+        f"underdog - favorito, donde cada lado = {formula}",
+        "Existe al publicarse las alineaciones: atributos con snapshot anterior al partido.",
+        f"nula si en el underdog o en el favorito {why_null}",
     )
 
 
@@ -134,18 +196,18 @@ SILVER_COLUMNS: list[ColumnSpec] = [
     ColumnSpec("match_id", "Identificador del partido (clave primaria: una fila = un partido).", "entero", "identificador", "fuente", "match.match_api_id", "", PRE, "IDENTIFICADOR", "—", "Clave, no feature: su valor no dice nada del partido."),
     ColumnSpec("fecha", "Fecha del partido.", "fecha", "metadata", "fuente", "match.date", "", PRE, "AUXILIAR", "—", "Se conserva para separar train/test en el tiempo; no es feature."),
     ColumnSpec("temporada", "Temporada (ej. 2012/2013).", "texto", "metadata", "fuente", "match.season", "", PRE, "AUXILIAR", "—", "Se conserva para cortes temporales; como feature solo identificaría la época."),
-    ColumnSpec("jornada", "Número de fecha dentro de la temporada.", "entero", "feature", "fuente", "match.stage", "", PRE, "ENTRA", "amarillo", "Pre-partido y barata, pero sin señal marginal en el EDA (tasa real - probabilidad implícita entre -1,2 y +0,2 pp por tramo de jornadas)."),
-    ColumnSpec("liga", "Liga del partido.", "categórica", "feature", "fuente", "league.name", "", PRE, "ENTRA", "amarillo", "Pre-partido. Señal débil (test de razón de verosimilitud p = 0,06; tasa real - probabilidad implícita por liga entre -2,1 y +1,5 pp)."),
+    _candidate("jornada", "Número de fecha dentro de la temporada.", "entero", "fuente", "match.stage", "", "Se conoce antes del partido."),
+    _candidate("liga", "Liga del partido.", "categórica", "fuente", "league.name", "", "Se conoce antes del partido."),
     ColumnSpec("odds_source", "Casa de apuestas de la que salen las cuotas de la fila (PS = Pinnacle, B365 = Bet365, BW = bwin).", "texto", "metadata", "calculada", "prepare_matches", "primera casa de ODDS_BOOKMAKERS con las 3 cuotas completas", PRE, "AUXILIAR", "—", "Trazabilidad. No es feature: está confundida con la época (B365 hasta 2011/12, PS desde 2012/13)."),
     ColumnSpec("prob_home", "Probabilidad implícita normalizada de victoria local.", "decimal", "auxiliar", "calculada", "prepare_matches", "(1 / odds_home) / overround", PRE, "AUXILIAR", "—", "Define al favorito y valida prob_home + prob_draw + prob_away = 1. Como feature es redundante con prob_favorito/prob_no_favorito + equipo_favorito."),
-    ColumnSpec("prob_draw", "Probabilidad implícita normalizada de empate.", "decimal", "feature", "calculada", "prepare_matches", "(1 / odds_draw) / overround", PRE, "ENTRA", "verde", "Precio de mercado anterior al partido. Un empate también es 'no gana el underdog'."),
+    _candidate("prob_draw", "Probabilidad implícita normalizada de empate.", "decimal", "calculada", "prepare_matches", "(1 / odds_draw) / overround", "Precio de mercado anterior al partido."),
     ColumnSpec("prob_away", "Probabilidad implícita normalizada de victoria visitante.", "decimal", "auxiliar", "calculada", "prepare_matches", "(1 / odds_away) / overround", PRE, "AUXILIAR", "—", "Idem prob_home."),
-    ColumnSpec("equipo_favorito", "Qué equipo es el favorito: 'local' o 'visitante'.", "categórica", "feature", "calculada", "define_underdog_and_target", "'local' si prob_home > prob_away, 'visitante' si prob_home < prob_away", PRE, "ENTRA", "verde", "Ubica la localía del underdog: el underdog local gana 0,6 pp más de lo que dice el mercado y el visitante 0,8 pp menos."),
+    _candidate("equipo_favorito", "Qué equipo es el favorito: 'local' o 'visitante'.", "categórica", "calculada", "define_underdog_and_target", "'local' si prob_home > prob_away, 'visitante' si prob_home < prob_away", "Sale de las cuotas pre-partido."),
     ColumnSpec("prob_favorito", "Probabilidad implícita de victoria del favorito.", "decimal", "auxiliar", "calculada", "define_underdog_and_target", "max(prob_home, prob_away)", PRE, "AUXILIAR", "—", f"Define el umbral (prob_favorito - prob_no_favorito > {UNDERDOG_MIN_PROB_GAP}). Como feature es derivable: 1 - prob_draw - prob_no_favorito."),
-    ColumnSpec("prob_no_favorito", "Probabilidad implícita de victoria del underdog.", "decimal", "feature", "calculada", "define_underdog_and_target", "min(prob_home, prob_away)", PRE, "ENTRA", "verde", "Feature principal: el mercado está calibrado (hipótesis del EDA) y es la línea de base a superar."),
+    _candidate("prob_no_favorito", "Probabilidad implícita de victoria del underdog.", "decimal", "calculada", "define_underdog_and_target", "min(prob_home, prob_away)", "Precio de mercado anterior al partido."),
     *[_gap_spec(metric) for metric in GAP_METRICS],
-    ColumnSpec("nofav_formacion", "Formación del underdog como defensores-medios-delanteros (ej. 4-4-2).", "categórica", "feature", "calculada", "build_lineup_features", "conteo de titulares por línea según su coordenada Y", PRE, "TRANSFORMAR", "amarillo", "Existe con la alineación. Sin señal incremental en el EDA (p = 0,66); 12 categorías: codificar agrupando las raras. Los mediapuntas (Y=8) cuentan como ataque: un 4-2-3-1 aparece como 4-2-4.", _FORMACION_NULA),
-    ColumnSpec("fav_formacion", "Formación del favorito (mismo formato).", "categórica", "feature", "calculada", "build_lineup_features", "idem nofav_formacion", PRE, "TRANSFORMAR", "amarillo", "Idem nofav_formacion.", _FORMACION_NULA),
+    _candidate("nofav_formacion", "Formación del underdog como defensores-medios-delanteros (ej. 4-4-2).", "categórica", "calculada", "build_lineup_features", "conteo de titulares por línea según su coordenada Y", "Existe al publicarse la alineación.", _FORMACION_NULA),
+    _candidate("fav_formacion", "Formación del favorito (mismo formato).", "categórica", "calculada", "build_lineup_features", "idem nofav_formacion", "Existe al publicarse la alineación.", _FORMACION_NULA),
     ColumnSpec(TARGET_COLUMN, "True si el underdog ganó el partido. Empate o derrota = False.", "booleano", "target", "calculada", "define_underdog_and_target", "(favorito local y ganó el visitante) o (favorito visitante y ganó el local)", POST, "TARGET", "—", "Es lo que se quiere predecir: nunca puede ser feature."),
 ]
 
@@ -181,9 +243,9 @@ def _side_columns() -> list[ColumnSpec]:
     for side, label in (("home", "local"), ("away", "visitante")):
         for metric, (what, formula, _) in SIDE_METRICS.items():
             if metric in ("gk_reflexes", "gk_diving", "gk_handling"):
-                decision, reason = "SALE", "Hipótesis 3 (refutada): como diferencia underdog - favorito correlaciona 0,81 a 0,87 con la de gk_overall y no mejora la predicción (p = 0,25)."
+                decision, reason = "SALE", "Hipótesis 3 (confirmada, verde): como diferencia underdog - favorito, su correlación con la de gk_overall es de 0,81 a 0,87. Repite la misma información."
             else:
-                decision, reason = "TRANSFORMAR", f"Se reemplaza por nofav_{metric}_gap. Hipótesis 4: el nivel de cada lado no agrega información sobre la diferencia (p = 0,42)."
+                decision, reason = "TRANSFORMAR", f"Se reemplaza por nofav_{metric}_gap, que es como está planteada la pregunta. La diferencia local - visitante se recupera cambiando el signo, y el nivel de cada lado no agrega información sobre la diferencia (comparación de modelos, p = 0,42)."
             specs.append(_dropped(f"{side}_{metric}", f"{what[0].upper()}{what[1:]}, equipo {label}.", "decimal", "calculada",
                                   "build_lineup_features", formula, PRE, decision, reason, "intermediate"))
         specs.append(_dropped(f"{side}_formacion", f"Formación del equipo {label}.", "categórica", "calculada", "build_lineup_features",
@@ -216,7 +278,10 @@ DROPPED_COLUMNS: list[ColumnSpec] = [
 # -----------------------------------------------------------------------------
 
 SILVER_COLUMN_NAMES = [c.name for c in SILVER_COLUMNS]
-FEATURE_COLUMNS = [c.name for c in SILVER_COLUMNS if c.is_feature]
+# Candidatas: todo lo que existe antes del partido y se evaluó con el semáforo.
+CANDIDATE_COLUMNS = [c.name for c in SILVER_COLUMNS if c.is_feature]
+# Features del modelo: las candidatas que ENTRAN.
+FEATURE_COLUMNS = [c.name for c in SILVER_COLUMNS if c.enters_model]
 AUDIT_COLUMN_NAMES = [c.name for c in AUDIT_COLUMNS]
 NULLABLE_SILVER_COLUMNS = {c.name: c.null_reason for c in SILVER_COLUMNS if c.null_reason}
 
@@ -261,14 +326,15 @@ def leakage_audit_frame(silver_columns: list[str]) -> pd.DataFrame:
     for name in silver_columns:
         spec = by_name.get(name)
         if spec is None:
-            rows.append({"columna": name, "origen": "SIN DOCUMENTAR", "momento_disponible": "?", "feature": False,
+            rows.append({"columna": name, "origen": "SIN DOCUMENTAR", "momento_disponible": "?", "candidata": False, "feature": False,
                          "target": False, "leakage": True, "decision": "REVISAR"})
             continue
         rows.append({
             "columna": name,
             "origen": spec.origin,
             "momento_disponible": spec.available,
-            "feature": spec.is_feature,
+            "candidata": spec.is_feature,
+            "feature": spec.enters_model,
             "target": spec.role == "target",
             "leakage": spec.leaks_outcome or name in LEAKAGE_COLUMNS or (spec.is_feature and spec.available != PRE),
             "decision": spec.decision,
@@ -291,7 +357,7 @@ def _md_table(df: pd.DataFrame) -> str:
 
 
 def _column_block(spec: ColumnSpec, nulls: int | None) -> str:
-    feature = "sí" if spec.is_feature else "no"
+    feature = "sí" if spec.enters_model else ("candidata, no entra" if spec.is_feature else "no")
     null_text = f"sí: {spec.null_reason}" if spec.null_reason else "no"
     rows = [
         ("Descripción", spec.description),
@@ -301,7 +367,7 @@ def _column_block(spec: ColumnSpec, nulls: int | None) -> str:
         ("De dónde sale", f"`{spec.source}`"),
         ("Fórmula", spec.formula or "—"),
         ("Disponible", spec.available),
-        ("¿Feature?", f"{feature} ({spec.decision})"),
+        ("¿Entra al modelo?", f"{feature} ({spec.decision})"),
         ("Motivo", spec.reason),
         ("¿Puede ser nula?", null_text),
     ]
@@ -314,7 +380,7 @@ def render_data_dictionary(null_counts: dict[str, int] | None = None) -> str:
     null_counts = null_counts or {}
     summary = pd.DataFrame([
         {"columna": f"`{c.name}`", "rol": c.role, "origen": c.origin, "tipo": c.dtype, "disponible": c.available,
-         "feature": "sí" if c.is_feature else "no", "nulos": null_counts.get(c.name, "—")}
+         "entra al modelo": "sí" if c.enters_model else "no", "nulos": null_counts.get(c.name, "—")}
         for c in SILVER_COLUMNS
     ])
     sections = [

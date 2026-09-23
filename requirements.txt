@@ -1,3 +1,8 @@
-# Astro Runtime ya trae Airflow instalado: no listar apache-airflow acá.
-pandas>=2.0
+# Astro Runtime ya trae Airflow (y pandas): no listar apache-airflow acá.
+
+# PostgresHook para la Airflow Connection a source-db.
+apache-airflow-providers-postgres==7.0.2
+# Bronze, intermediate y Silver se guardan en Parquet.
+pyarrow==25.0.1
+# Solo para el seed inicial, si falta database.sqlite (source_loader --download).
 kaggle>=1.6

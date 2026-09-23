@@ -1,189 +1,266 @@
-# ¿Gana el no favorito? — pipeline de dataset
+# ¿Gana el underdog? — pipeline de datos (Entrega 2)
 
-## Pregunta del proyecto
+## 1. Pregunta
 
-¿Ganará el equipo no favorito (underdog) un partido, dadas las
-probabilidades implícitas de las apuestas pre-partido y **las métricas
-intrínsecas de cada uno de los jugadores que salen a la cancha**?
+¿Ganará el equipo no favorito (*underdog*) un partido, dadas las **probabilidades implícitas pre-partido** y métricas
+construidas a partir de **sus jugadores titulares**?
 
-**Una fila es un partido**, con: (a) las cuotas pre-partido convertidas en
-probabilidades implícitas normalizadas, (b) features construidos desde los
-atributos individuales de los **22 titulares reales** de ese partido, tomados
-de su último snapshot *anterior* a la fecha del encuentro, y (c) el resultado
-real.
+## 2. Unidad de análisis
 
-## Fuente
+**Una fila = un partido**, con clave `match_id`. Silver final: **17.959 partidos × 31 columnas**, 9 ligas europeas,
+temporadas 2008/09 a 2015/16.
 
-| Fuente | Qué aporta | Cómo se obtiene |
+## 3. Target
+
+`gano_no_favorito`: `True` si ganó el underdog; empate o derrota = `False`. Sin nulos.
+**20,35% True** (3.654) / 79,65% False (14.305).
+
+## 4. Fuente
+
+[European Soccer Database](https://www.kaggle.com/datasets/hugomathien/soccer) (Kaggle, `hugomathien/soccer`):
+25.979 partidos con cuotas 1X2 de 10 casas, **la alineación titular real de cada partido** (22 jugadores con su
+coordenada en la cancha) y 183.978 snapshots fechados de atributos de 11.060 jugadores (linaje FIFA/sofifa).
+Se publica como SQLite y **se importa una vez a PostgreSQL** (`source-db`). A partir de ahí es la base fuente que
+consulta Airflow.
+
+## 5. Arquitectura
+
+```
+database.sqlite --seed único--> source-db (PostgreSQL, servicio propio)
+                                    |  Airflow Connection "soccer_source_db"
+                                    v
+                    SQLCheckOperator / PostgresHook + include/sql/*.sql
+                                    v
+                    BRONZE  (resultado crudo de cada consulta, Parquet)
+                                    v
+                    transformaciones (include/src/transform.py)
+                                    v
+                    SILVER  (sin columnas post-partido)  +  AUDIT (goles, resultados)
+                                    v
+                    quality checks  ->  perfil  ->  EDA (notebook)
+```
+
+El DAG `underdog_pipeline` tiene 15 tareas con responsabilidades separadas. Diagrama y tabla de entradas y salidas por tarea
+en **[docs/architecture.md](docs/architecture.md)**. `source-db` es un PostgreSQL **distinto** del PostgreSQL de
+metadata de Airflow.
+
+## 6. Capas
+
+| Capa | Dónde | Qué es |
 |---|---|---|
-| [Kaggle: European Soccer Database](https://www.kaggle.com/datasets/hugomathien/soccer) (`hugomathien/soccer`) | 25.979 partidos de 11 ligas europeas (2008/09 a 2015/16) con cuotas 1X2 de 10 casas de apuestas, **la alineación titular real de cada partido** (22 jugadores con su posición en la cancha) y **183.978 snapshots fechados de atributos individuales** de 11.060 jugadores (linaje FIFA/sofifa) | Descarga vía API de Kaggle de un único archivo SQLite (~300 MB) |
+| Fuente | `source-db` (PostgreSQL) | las 7 tablas originales |
+| **Bronze** | `include/data/bronze/{matches,teams,players,player_attributes}.parquet` | lo que devolvió cada consulta SQL, **sin transformar** (mismos valores, nulos y tipos; test `tests/test_bronze.py`) |
+| Intermedia | `include/data/intermediate/` | cada etapa entre Bronze y Silver, persistida (nada grande viaja por XCom) |
+| **Silver** | `include/data/silver/underdog_dataset.parquet` (+ `.csv`) | el dataset para EDA/modelado |
+| Auditoría | `include/data/audit/` | goles, resultados, cuotas crudas y partidos excluidos **con su motivo** |
+| Reportes | `include/data/reports/` | quality report, perfil, auditoría de fuga, sensibilidad del umbral |
 
-### Por qué esta fuente y no las dos originales
+## 7. Definición de underdog
 
-- **sofifa.com** bloquea explícitamente a bots en su `robots.txt`
-  (`Disallow: /` para ClaudeBot, GPTBot, etc., y `Content-Signal: ai-train=no`)
-  y está detrás de Cloudflare: un scraper tendría que evadir esa protección.
-- **football-data.co.uk** (la fuente original de resultados y cuotas) lleva
-  días devolviendo `HTTP 503`.
-- Esta base resuelve las dos cosas en un solo archivo y, sobre todo, **trae
-  las alineaciones titulares**, que es lo que permite que la predicción salga
-  de los valores intrínsecos de cada jugador y no de un promedio de plantel.
-  Además, al venir con `player_api_id` y `team_api_id`, el join es por id:
-  desaparece toda la fragilidad del mapeo de nombres ("Man United" vs
-  "Manchester United").
+- **Favorito** = el equipo con **mayor** probabilidad implícita de ganar; **underdog** = el de **menor**.
+- Se comparan solo `prob_home` y `prob_away`. **El empate no es un equipo.**
+- Probabilidad implícita = `(1/cuota) / overround`, con overround = suma de las tres `1/cuota` (el margen de la casa).
+  Así las tres suman 1. Se usa **una** casa por partido (Pinnacle, si no Bet365, si no las siguientes), registrada en `odds_source`.
 
-## Qué produce
+## 8. Criterio del umbral
 
-**19.694 filas × 82 columnas** (`include/data/processed/underdog_dataset.csv`),
-9 ligas, 8 temporadas.
+Un partido entra solo si **|prob_home − prob_away| > 0,05** (`UNDERDOG_MIN_PROB_GAP` en `include/config.py`).
+No es un valor elegido "porque parece razonable". Por debajo de ese gap, **quién es el underdog depende de la casa de apuestas**:
+Pinnacle y Bet365 eligen distinto favorito en el 54% de los partidos con gap ≤ 0,005, y en el 0% desde 0,045. 0,05 es el menor
+umbral evaluado (0; 0,02; 0,03; 0,05; 0,075; 0,10) sin etiquetas que dependan de la casa, y cuesta 1.703 filas (8,66%).
+Tabla completa en [docs/decisions.md](docs/decisions.md#4-partidos-sin-underdog-identificable-umbral-underdog_min_prob_gap--005).
 
-### Criterios de inclusión (explícitos, no descartes silenciosos)
+## 9. Features
 
-El log del task `armar_dataset` informa cada filtro:
+23 features, todas **pre-partido**. El momento de predicción es con las alineaciones ya publicadas y antes del pitazo:
 
-```
-25.979 partidos en la base
-→ 22.637 tras excluir 2 ligas sin ninguna cuota cargada (Polonia, Suiza)
-→ 19.727 con alineación titular completa (22 jugadores)
-→ 19.694 con las 3 cuotas 1X2 completas de al menos una casa
-```
+- **Mercado**: `prob_no_favorito`, `prob_draw`, `equipo_favorito` (si el underdog es local o visitante).
+- **Jugadores titulares**: 16 diferencias `nofav_<métrica>_gap` (underdog − favorito; positivo = el underdog es mejor)
+  para arquero, mejor jugador, top 3, peor, promedio del XI, dispersión, velocidad, definición, reacción, marca, fuerza,
+  líneas defensiva/media/ataque, edad y altura. Más `nofav_formacion` y `fav_formacion`.
+- **Contexto**: `liga`, `jornada`.
 
-Un partido sin cuotas no puede definir favorito, y uno sin alineación no
-tiene features de jugadores: en ambos casos la fila no puede responder la
-pregunta, así que se excluye antes de entrar al dataset.
+Los atributos de cada titular son los de su **último snapshot estrictamente anterior** al partido
+(`merge_asof(direction="backward", allow_exact_matches=False)`). Diccionario columna por columna, con fórmula y origen
+(**fuente** o **calculada por nosotros**): [docs/data_dictionary.md](docs/data_dictionary.md). Decisión sobre cada una de las
+82 columnas de la Entrega 1: [docs/column_candidates.md](docs/column_candidates.md).
 
-## Decisiones de diseño que hay que poder defender
+## 10. Data leakage
 
-1. **Nada de promedios de plantel.** Los features salen de la alineación
-   titular real: el arquero titular concreto (`*_gk_overall`,
-   `*_gk_reflexes`), el mejor jugador en cancha (`*_best_overall`), los tres
-   mejores individuos (`*_top3_overall`), el eslabón más débil
-   (`*_worst_overall`), la dispersión del once (`*_overall_std`, equipo
-   estrella-dependiente vs. parejo), el más rápido
-   (`*_fastest_sprint_speed`), el mejor definidor (`*_best_finishing`), y
-   cada línea según la formación que salió a jugar (`*_def_overall`,
-   `*_mid_overall`, `*_att_overall`).
-2. **Sin fuga de información temporal.** Los atributos se cruzan con
-   `merge_asof(direction="backward", allow_exact_matches=False)`: para cada
-   jugador se toma su snapshot más reciente **estrictamente anterior** al
-   partido. Nunca entra un rating publicado después del pitazo inicial.
-3. **Probabilidades, no cuotas crudas.** `1/cuota` para las tres opciones,
-   se suma el `overround` (margen de la casa, media 1,043 = 4,3%) y se
-   normaliza para que `prob_home + prob_draw + prob_away = 1.0`.
-4. **Una casa por fila, registrada.** Prioridad Pinnacle → Bet365 → resto
-   (columna `odds_source`: 53% Pinnacle, 47% Bet365). Pinnacle es la
-   referencia en estudios de eficiencia de mercado por tener el margen más
-   bajo.
-5. **El empate es un `False`.** La pregunta es "¿ganará el no favorito?": si
-   empató, no ganó. Dejarlo nulo tiraría ~25% de las filas. La información
-   del empate no se pierde: queda en `resultado_no_favorito`
-   (`gano`/`empato`/`perdio`).
-6. **La línea de cada titular sale de su coordenada Y en la cancha**, no de
-   su posición nominal, así que respeta la formación real de ese partido
-   (`*_formacion`, ej. `4-3-3`).
-7. **Features orientados a la pregunta.** Las columnas `nofav_*_gap` miden
-   la ventaja del **no favorito** sobre el favorito (positivo = el underdog
-   es superior en esa dimensión), que es la forma directa de responderla.
+Regla: **si una columna solo existe después de jugarse el partido, no puede ser feature.**
 
-## La concesión "tidy"
+- Goles (`goles_local`, `goles_visitante`), `resultado_ft` y `resultado_no_favorito` se usan **solo** para construir el
+  target y quedan en `include/data/audit/`, **no en Silver**.
+- Las consultas SQL ni siquiera traen las columnas de eventos del partido (`goal`, `card`, `possession`, …).
+- El DAG **falla** si Silver tiene una columna post-partido, una columna no documentada, o una feature que predice sola el
+  target con AUC > 0,90. La mejor feature sola, `prob_no_favorito`, da 0,64.
+- `split_features_target()` en `include/src/columns.py` arma X/y a partir del catálogo y se niega si X tendría información del resultado.
 
-Igual que `player_positions` en el dataset canónico de la cátedra, acá la
-concesión deliberada es que **una fila comprime a 22 jugadores**. Lo
-estrictamente tidy sería una fila por (partido, jugador); pero entonces la
-unidad de análisis dejaría de ser el partido, que es lo que la pregunta pide
-predecir. La columna `*_xi_sin_atributos` deja a la vista cuántos titulares
-de esa fila no tenían snapshot previo (0 en el 99,9% de los casos).
+## 11. Cómo levantar el entorno (Docker + Astro CLI)
 
-## Clave primaria
+Requisitos: Docker Desktop corriendo y [Astro CLI](https://www.astronomer.io/docs/astro/cli/install-cli).
 
-`match_id` (el `match_api_id` de la base). Es el test operativo de que una
-fila es un partido: si se duplicara, el pipeline estaría devolviendo el mismo
-partido dos veces.
-
-## Nulos conocidos
-
-El diccionario `NULL_REASONS` en [`include/src/transform.py`](include/src/transform.py)
-documenta cada columna que puede tener nulos, y `quality_check.py` **falla la
-corrida** si aparece un nulo en una columna no documentada. Los nulos reales
-son mínimos:
-
-| Columna | Nulos | Motivo |
-|---|---|---|
-| `nofav_gk_overall_gap` | 0,6% | Algún partido sin slot de arquero identificable por coordenada Y |
-| `gano_no_favorito` y derivadas | 0,5% | Local y visitante con probabilidad implícita exactamente igual: no hay favorito definible |
-| atributos de jugador | 0,03% | Titular sin ningún snapshot de atributos anterior a esa fecha |
-
-## Validación del contenido (no solo del formato)
-
-Los números dan lo que tienen que dar, lo cual es la mejor evidencia de que la
-lógica del target no está invertida:
-
-- El favorito es el local en el **72%** de los partidos (ventaja de localía).
-- El no favorito **gana 21,4%**, empata 25,2% y pierde 53,4%.
-- La tasa de victoria del underdog cae monotónicamente según cuán favorito
-  sea el rival: **31,9%** en partidos parejos → **2,9%** cuando el favorito
-  tiene más del 80% de probabilidad implícita.
-- **Los features de jugadores aportan señal por encima de las cuotas**:
-  cuando el once del underdog es mejor en papel
-  (`nofav_xi_overall_mean_gap > 0`), su tasa de victoria sube de **19,3% a
-  28,6%**.
-
-## Estructura (proyecto Astro)
-
-```
-dags/underdog_pipeline_dag.py     # el DAG, solo orquesta
-include/config.py                 # fuente, ligas excluidas, casas de apuestas
-include/src/extract_soccer_db.py  # capa bronce: baja el SQLite de Kaggle
-include/src/transform.py          # capa plata: features por jugador + target
-include/src/quality_check.py      # los 7 criterios de la Entrega
-include/data/raw/soccer_db/       # base cruda (no se versiona)
-include/data/processed/           # CSV final (no se versiona)
+```bash
+cp .env.example .env
 ```
 
-`include/` se importa desde el DAG como `include.config`,
-`include.src.transform`, etc. — Astro ya lo deja en el `PYTHONPATH` del
-contenedor.
+```bash
+cp source_db.env.example source_db.env
+```
 
-## Cómo correrlo (Astro CLI)
+Completá la misma contraseña en los dos archivos (sin caracteres especiales). Después:
 
-Requisitos: Docker Desktop corriendo y Astro CLI instalado (`astro version`).
+```bash
+astro dev start
+```
 
-1. Token de Kaggle: <https://www.kaggle.com/settings/api> → *Generate New Token*.
-2. Completá `.env` en la raíz (ya está en `.gitignore`):
-   ```
-   KAGGLE_API_TOKEN=tu_token
-   ```
-   Si el entorno ya estaba corriendo, `astro dev restart` para que el
-   scheduler tome la variable.
-3. `astro dev start` → UI en <http://localhost:8080>.
-4. Disparar el DAG `underdog_pipeline` desde la interfaz y seguir los 3
-   tasks (`extraer_base`, `armar_dataset`, `chequear_calidad`).
-5. `astro dev stop` al terminar.
+Levanta Airflow (UI en <http://localhost:8080>) **y** `source-db` (definido en `docker-compose.override.yml`, que Astro combina
+con su compose). Desde la PC, `source-db` queda en `localhost:5433`.
 
-### Correr los pasos sueltos para debug
+## 12. La Airflow Connection
+
+La conexión `soccer_source_db` se define por variable de entorno en `.env` (no se versiona):
+
+```
+AIRFLOW_CONN_SOCCER_SOURCE_DB=postgres://soccer:<password>@source-db:5432/soccer
+```
+
+Ningún archivo de Python tiene host, usuario, contraseña ni puerto. El DAG y el seed piden
+`PostgresHook(postgres_conn_id="soccer_source_db")` y Airflow resuelve el resto. Las credenciales del contenedor de la base
+están en `source_db.env`, aparte, para que ese contenedor no reciba las variables de Airflow.
+
+La tarea `check_source_db` la verifica en cada corrida. `airflow connections test` viene deshabilitado en Airflow 3, así que para
+probarla a mano, dentro de `astro dev bash`:
+
+```bash
+python -c "from include.src.database import get_source_hook; print(get_source_hook().get_first('select current_user, current_database()'))"
+```
+
+## 13. Seed de source-db (una sola vez)
+
+Poné `database.sqlite` en `include/data/raw/soccer_db/`. Si no lo tenés, el seed lo puede bajar de Kaggle con `--download`
+y `KAGGLE_API_TOKEN` en `.env`. Después:
 
 ```bash
 astro dev bash
-python -m include.src.extract_soccer_db
-python -m include.src.transform
-python -m include.src.quality_check
 ```
 
-## Limitaciones conocidas
+Y dentro del contenedor:
 
-- **La base termina en la temporada 2015/2016.** Sirve para entrenar y
-  validar el modelo, pero no para predecir un partido de la fecha que viene:
-  para eso haría falta enchufar una fuente de alineaciones y cuotas actuales
-  (que además solo se conocen ~1 hora antes del partido).
-- **No hay estado de forma.** Los features son los atributos de los
-  jugadores, no el rendimiento reciente del equipo. Se podría derivar
-  (puntos en los últimos 5 partidos) desde los propios resultados de la base
-  en la Entrega 2.
-- Las lesiones y suspensiones no están como tal, pero se reflejan
-  indirectamente: si un titular no jugó, no está en la alineación de esa
-  fila.
-- **Errores puntuales de la fuente, ya medidos:** 3 de 39.388 alineaciones
-  traen las coordenadas en cero (se resuelve eligiendo al arquero por sus
-  reflejos, ver `build_player_features`), 4 no permiten clasificar alguna
-  línea (quedan como nulos documentados) y 1 repite un jugador dentro del
-  mismo once. En total, menos del 0,02% de las alineaciones.
+```bash
+python -m include.src.source_loader
+```
+
+Crea las 7 tablas en PostgreSQL (≈3 minutos; `match` es la más pesada por las columnas XML de eventos). Es idempotente:
+si las tablas ya tienen las filas del SQLite, no hace nada. `--force` las recrea. Los datos viven en el volumen
+`source_db_data` y sobreviven a `astro dev stop/restart`.
+
+## 14. Cómo ejecutar el DAG
+
+- **Programado**: todos los días a las 06:00 UTC (`catchup=False`). Si la fuente y el código no cambiaron desde la última
+  corrida exitosa, `detect_source_changes` saltea el resto. La huella combina filas, fecha máxima y md5 del contenido de cada tabla.
+- **Manual**: en la UI, *Trigger* sobre `underdog_pipeline`. Con el parámetro `force_rebuild = true` se reconstruye todo aunque
+  no haya cambios. Por línea de comandos:
+
+```bash
+astro dev run dags trigger underdog_pipeline --conf '{"force_rebuild": true}'
+```
+
+Por qué diario y cómo funciona el ShortCircuit: [docs/architecture.md](docs/architecture.md#schedule-y-detección-de-cambios).
+
+## 15. Qué produce
+
+```
+25.979 partidos en la fuente
+→ 22.637 sin las 2 ligas sin cuotas (Polonia, Suiza)
+→ 19.727 con alineación titular completa (22 jugadores)
+→ 19.694 con cuotas 1X2 completas de al menos una casa
+→ 19.662 con cuotas coherentes (empate implícito ≤ 40%)
+→ 19.559 con underdog identificable (probabilidades distintas)
+→ 17.959 con underdog estable (|prob_home − prob_away| > 0,05)   ← Silver
+```
+
+- `silver/underdog_dataset.parquet`: 17.959 × 31. De esas 31 columnas, 23 son features, 1 el target, 1 la clave y 6 metadata o auxiliares.
+- `reports/quality_report.json`: 17 hard checks (los 7 de la Entrega 1 + 10 nuevos), todos OK.
+- `reports/dataset_profile.{json,md}`, `reports/leakage_audit.csv`, `reports/threshold_sensitivity.csv`.
+- `audit/match_audit.parquet` (mismo `match_id` que Silver) y `audit/excluded_matches.parquet` (8.020 partidos con su motivo).
+
+## 16. Dónde están Bronze y Silver
+
+`include/data/bronze/` y `include/data/silver/`. Tabla completa en el punto 6. Los datos no se versionan: se regeneran con
+seed + DAG.
+
+## 17. Tests
+
+84 tests. En el contenedor de Airflow corren todos, incluidos los del DAG:
+
+```bash
+astro dev pytest
+```
+
+En local, sin Airflow, corren los de lógica, Bronze, checks y Silver real; los del DAG se saltean:
+
+```bash
+python -m venv .venv
+```
+
+```bash
+.venv/Scripts/pip install -r requirements-dev.txt
+```
+
+```bash
+.venv/Scripts/python -m pytest tests
+```
+
+Cubren: `match_id` único, target sin nulos y binario, underdog en todas las filas, sin goles ni columnas de fuga,
+probabilidades que suman 1, snapshots estrictamente anteriores al partido (sintético y sobre los datos reales), filtro de umbral
+según `config.py`, DAG importable, schedule, tareas y dependencias, cada quality check, detección de cambios, y que Bronze no
+modifica lo que devuelve SQL.
+
+## 18. Notebook
+
+`notebooks/entrega_2_eda.ipynb` se guarda **con sus outputs**. Lee Silver y las capas intermedias (hay que haber corrido el DAG).
+Para re-ejecutarlo de arriba a abajo:
+
+```bash
+.venv/Scripts/jupyter nbconvert --to notebook --execute --inplace notebooks/entrega_2_eda.ipynb
+```
+
+Contiene el perfil del dataset, cuatro hipótesis con su semáforo y su decisión, la tabla de columnas candidatas y el
+control final de leakage. Checklist de la entrega: [docs/entrega_2_checklist.md](docs/entrega_2_checklist.md).
+
+## 19. Limitaciones
+
+- **La base termina en 2015/16.** Sirve para entrenar y validar, no para predecir la fecha que viene: haría falta una fuente
+  de alineaciones y cuotas actuales, que se conocen ~1 h antes del partido.
+- **Las cuotas se publican días antes que las alineaciones.** Una cuota "de cierre" (más cercana al pitazo) sería un rival más
+  difícil para los features de jugadores. En esta fuente no hay cuotas de cierre.
+- **La señal de los jugadores por encima del mercado es chica** (hipótesis 2: +0,003 de AUC fuera de muestra). La línea de base
+  a superar es el mercado solo (AUC 0,647).
+- **`odds_source` cambia con la época** (Bet365 hasta 2011/12, Pinnacle desde 2012/13): una partición temporal compara
+  márgenes distintos.
+- **La formación comprime a 3 líneas por coordenada Y**: un 4-2-3-1 aparece como 4-2-4.
+- No hay estado de forma reciente, lesiones ni suspensiones como columnas. Un titular ausente se refleja solo porque no está en la alineación.
+- Errores puntuales de la fuente, medidos: en 4 partidos de Silver las coordenadas Y vienen vacías o en 0 (nulos documentados),
+  y 835 snapshots duplicados vacíos (descartados).
+
+## Estructura
+
+```
+dags/underdog_pipeline_dag.py        el DAG: solo orquesta
+include/config.py                    configuración técnica + reglas de negocio
+include/sql/                         consultas: check, huella y las 4 extracciones de Bronze
+include/src/database.py              acceso a source-db por la Airflow Connection
+include/src/extract.py               Bronze: consulta -> Parquet sin transformar
+include/src/change_detection.py      huella fuente+código y manifest
+include/src/transform.py             reglas de negocio y features (funciones puras)
+include/src/columns.py               catálogo de columnas (diccionario, features, fuga) + generador de docs
+include/src/quality_check.py         hard checks + métricas informativas
+include/src/profiling.py             perfil, sensibilidad del umbral, auditoría de fuga
+include/src/storage.py               escrituras atómicas de Parquet/CSV/JSON
+include/src/source_loader.py         seed SQLite -> PostgreSQL (fuera del DAG)
+docker-compose.override.yml          servicio source-db
+notebooks/entrega_2_eda.ipynb        EDA de la Entrega 2
+docs/                                arquitectura, decisiones, diccionario, candidatas, checklist
+tests/                               tests de lógica, Bronze, checks, Silver real y DAG
+```

@@ -1,6 +1,7 @@
 astro
 .git
 .env
+source_db.env
 .DS_Store
 airflow_settings.yaml
 __pycache__/
@@ -15,11 +16,15 @@ airflow.db
 logs/
 .astro/*.local.yml
 .astro/*.local.yaml
+.ipynb_checkpoints/
+.pytest_cache/
 
 **/.astro/dbt_metadata.json
 **/.astro/manifest.slim.json
 
-# Datos crudos y el dataset final: se regeneran corriendo el DAG, no se versionan.
-include/data/raw/
-include/data/processed/
+# Datos: la fuente cruda y todas las capas se regeneran (seed + DAG), no se
+# versionan. Se conservan las carpetas vacías con .gitkeep.
+include/data/**
+!include/data/*/
+!include/data/*/.gitkeep
 *.zip

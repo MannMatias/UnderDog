@@ -1,0 +1,12 @@
+# Entorno local (fuera de Airflow) para correr los tests de lógica y el notebook.
+#   python -m venv .venv && .venv/Scripts/pip install -r requirements-dev.txt   (Windows)
+# No incluye requirements.txt: el provider de Postgres instalaría apache-airflow.
+pandas>=2.0
+pyarrow==25.0.1
+pytest
+# notebook
+matplotlib
+scipy
+scikit-learn
+ipykernel
+nbconvert

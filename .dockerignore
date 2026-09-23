@@ -1,8 +1,14 @@
 astro
 .git
 .env
+.env.*
+source_db.env*
 airflow_settings.yaml
 logs/
 .venv
 airflow.db
 airflow.cfg
+# Los datos no van dentro de la imagen: en desarrollo local include/ se monta
+# como volumen, y copiar el SQLite (~300 MB) hace la imagen 2x más pesada.
+include/data
+notebooks/.ipynb_checkpoints

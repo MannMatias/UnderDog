@@ -231,7 +231,7 @@ Para re-ejecutarlo de arriba a abajo:
 
 Sigue la consigna de la Entrega 2. Tiene el perfil con los comandos de verificación, cuatro fichas con los seis campos
 del TP2 y el semáforo de la cátedra, la tabla de columnas candidatas y el control final de fuga. El campo "Qué espero ver"
-de cada ficha está marcado como borrador: lo tiene que reescribir el grupo. Checklist de la entrega: [docs/entrega_2_checklist.md](docs/entrega_2_checklist.md).
+de cada ficha recoge lo que el grupo esperaba antes de ver los resultados. Checklist de la entrega: [docs/entrega_2_checklist.md](docs/entrega_2_checklist.md).
 
 ## 19. Limitaciones
 

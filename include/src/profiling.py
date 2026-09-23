@@ -23,7 +23,6 @@ ROW_MEANING = "un partido"
 # |asimetría| por encima de este valor se considera marcadamente asimétrica.
 STRONG_SKEW = 1.0
 
-
 # -----------------------------------------------------------------------------
 # Perfil del dataset
 # -----------------------------------------------------------------------------

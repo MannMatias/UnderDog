@@ -72,18 +72,21 @@ Tabla completa en [docs/decisions.md](docs/decisions.md#4-partidos-sin-underdog-
 
 ## 9. Features
 
-23 features, todas **pre-partido**. El momento de predicción es con las alineaciones ya publicadas y antes del pitazo:
+23 **candidatas**, todas pre-partido. El momento de predicción es con las alineaciones ya publicadas y antes del pitazo. A
+cada una se le aplicó el semáforo de la cátedra contra el objetivo: separación estandarizada si es numérica, η² si es
+categórica. **Entran al modelo las 12 que dan amarillo o verde:**
 
-- **Mercado**: `prob_no_favorito`, `prob_draw`, `equipo_favorito` (si el underdog es local o visitante).
-- **Jugadores titulares**: 16 diferencias `nofav_<métrica>_gap` (underdog − favorito; positivo = el underdog es mejor)
-  para arquero, mejor jugador, top 3, peor, promedio del XI, dispersión, velocidad, definición, reacción, marca, fuerza,
-  líneas defensiva/media/ataque, edad y altura. Más `nofav_formacion` y `fav_formacion`.
-- **Contexto**: `liga`, `jornada`.
+- **Mercado**: `prob_no_favorito`, `prob_draw`.
+- **Jugadores titulares**: 10 diferencias `nofav_<métrica>_gap` (underdog − favorito; positivo = el underdog es mejor): promedio
+  del XI, top 3, mejor, peor, defensa, mediocampo, ataque, definición, reacción y marca.
+
+**Salen las 11 en rojo**, que quedan en Silver para análisis: arquero, velocidad, fuerza, dispersión, edad, altura, las dos
+formaciones, `equipo_favorito`, `jornada` y `liga`.
 
 Los atributos de cada titular son los de su **último snapshot estrictamente anterior** al partido
 (`merge_asof(direction="backward", allow_exact_matches=False)`). Diccionario columna por columna, con fórmula y origen
-(**fuente** o **calculada por nosotros**): [docs/data_dictionary.md](docs/data_dictionary.md). Decisión sobre cada una de las
-82 columnas de la Entrega 1: [docs/column_candidates.md](docs/column_candidates.md).
+(**fuente** o **calculada por nosotros**): [docs/data_dictionary.md](docs/data_dictionary.md). Tabla de candidatas con la zona
+y la decisión de cada columna, más el destino de las 82 columnas de la Entrega 1: [docs/column_candidates.md](docs/column_candidates.md).
 
 ## 10. Data leakage
 
@@ -180,7 +183,7 @@ Por qué diario y cómo funciona el ShortCircuit: [docs/architecture.md](docs/ar
 → 17.959 con underdog estable (|prob_home − prob_away| > 0,05)   ← Silver
 ```
 
-- `silver/underdog_dataset.parquet`: 17.959 × 31. De esas 31 columnas, 23 son features, 1 el target, 1 la clave y 6 metadata o auxiliares.
+- `silver/underdog_dataset.parquet`: 17.959 × 31. De esas 31 columnas, 23 son candidatas a feature (12 entran al modelo), 1 es el target, 1 la clave y 6 son metadata o auxiliares.
 - `reports/quality_report.json`: 17 hard checks (los 7 de la Entrega 1 + 10 nuevos), todos OK.
 - `reports/dataset_profile.{json,md}`, `reports/leakage_audit.csv`, `reports/threshold_sensitivity.csv`.
 - `audit/match_audit.parquet` (mismo `match_id` que Silver) y `audit/excluded_matches.parquet` (8.020 partidos con su motivo).
@@ -192,7 +195,7 @@ seed + DAG.
 
 ## 17. Tests
 
-84 tests. En el contenedor de Airflow corren todos, incluidos los del DAG:
+85 tests. En el contenedor de Airflow corren todos, incluidos los del DAG:
 
 ```bash
 astro dev pytest
@@ -226,8 +229,9 @@ Para re-ejecutarlo de arriba a abajo:
 .venv/Scripts/jupyter nbconvert --to notebook --execute --inplace notebooks/entrega_2_eda.ipynb
 ```
 
-Contiene el perfil del dataset, cuatro hipótesis con su semáforo y su decisión, la tabla de columnas candidatas y el
-control final de leakage. Checklist de la entrega: [docs/entrega_2_checklist.md](docs/entrega_2_checklist.md).
+Sigue la consigna de la Entrega 2. Tiene el perfil con los comandos de verificación, cuatro fichas con los seis campos
+del TP2 y el semáforo de la cátedra, la tabla de columnas candidatas y el control final de fuga. El campo "Qué espero ver"
+de cada ficha está marcado como borrador: lo tiene que reescribir el grupo. Checklist de la entrega: [docs/entrega_2_checklist.md](docs/entrega_2_checklist.md).
 
 ## 19. Limitaciones
 
@@ -235,8 +239,8 @@ control final de leakage. Checklist de la entrega: [docs/entrega_2_checklist.md]
   de alineaciones y cuotas actuales, que se conocen ~1 h antes del partido.
 - **Las cuotas se publican días antes que las alineaciones.** Una cuota "de cierre" (más cercana al pitazo) sería un rival más
   difícil para los features de jugadores. En esta fuente no hay cuotas de cierre.
-- **La señal de los jugadores por encima del mercado es chica** (hipótesis 2: +0,003 de AUC fuera de muestra). La línea de base
-  a superar es el mercado solo (AUC 0,647).
+- **La señal de los jugadores por encima del mercado es chica.** En la hipótesis 2, al controlar por `prob_no_favorito`, la
+  separación del gap del XI cae de 0,36 a 0,03–0,16 (rojo). La línea de base a superar es el mercado solo.
 - **`odds_source` cambia con la época** (Bet365 hasta 2011/12, Pinnacle desde 2012/13): una partición temporal compara
   márgenes distintos.
 - **La formación comprime a 3 líneas por coordenada Y**: un 4-2-3-1 aparece como 4-2-4.

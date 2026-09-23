@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 from include.config import FLOAT_DECIMALS, TARGET_COLUMN, UNDERDOG_MIN_PROB_GAP
-from include.src.columns import FEATURE_COLUMNS, LEAKAGE_COLUMNS, NULLABLE_SILVER_COLUMNS, SILVER_COLUMN_NAMES
+from include.src.columns import CANDIDATE_COLUMNS, FEATURE_COLUMNS, LEAKAGE_COLUMNS, NULLABLE_SILVER_COLUMNS, SILVER_COLUMN_NAMES
 from include.src.profiling import constant_columns, numeric_skewness, target_distribution
 
 logger = logging.getLogger(__name__)
@@ -105,11 +105,12 @@ def hard_checks(df: pd.DataFrame) -> list[Check]:
 
     def no_leakage():
         leaked = sorted(set(df.columns) & set(LEAKAGE_COLUMNS))
-        target_as_feature = TARGET_COLUMN in FEATURE_COLUMNS
+        target_as_feature = TARGET_COLUMN in FEATURE_COLUMNS or TARGET_COLUMN in CANDIDATE_COLUMNS
         return not leaked and not target_as_feature, f"columnas post-partido presentes={leaked or 'ninguna'}"
 
     def no_perfect_predictor():
-        numeric = [c for c in FEATURE_COLUMNS if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
+        # Todas las candidatas, entren o no al modelo: una con el resultado adentro es un bug en cualquier caso.
+        numeric = [c for c in CANDIDATE_COLUMNS if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
         aucs = {c: single_feature_auc(df[c], df[TARGET_COLUMN]) for c in numeric}
         best = max(aucs, key=lambda c: aucs[c])
         return aucs[best] <= MAX_SINGLE_FEATURE_AUC, f"mejor AUC de una sola feature: {best} = {aucs[best]:.3f} (máximo permitido {MAX_SINGLE_FEATURE_AUC})"
